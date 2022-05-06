@@ -1,0 +1,242 @@
+apiVersion: addons.cluster.x-k8s.io/v1alpha3
+kind: ClusterResourceSet
+metadata:
+  name: tce-package-repository-crs
+spec:
+  clusterSelector:
+    matchExpressions:
+    - key: tkg.tanzu.vmware.com/cluster-name
+      operator: Exists
+      values: []
+  resources:
+  - kind: ConfigMap
+    name: tce-package-repository-crs
+  - kind: ConfigMap
+    name: metallb-package-crs
+  - kind: ConfigMap
+    name: cert-manager-package-crs  
+  - kind: ConfigMap
+    name: contour-package-crs          
+  strategy: ApplyOnce
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tce-package-repository-crs
+data:
+  data: |
+    apiVersion: packaging.carvel.dev/v1alpha1
+    kind: PackageRepository
+    metadata:
+      name: tce-repo
+      namespace: tanzu-package-repo-global
+    spec:
+      fetch:
+        imgpkgBundle:
+          image: projects.registry.vmware.com/tce/main@sha256:d5fdfda65778646d3dd723c29ab4a9aec2c24ecf52c4b38da845698c162c367a
+# the above imgpkg resolves to projects.registry.vmware.com/tce/main:0.11.0          
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metallb-package-crs
+data:
+  data: |
+    apiVersion: data.packaging.carvel.dev/v1alpha1
+    kind: Package
+    metadata:
+      name: metallb.pksbeachhouse.com.0.12.1
+      namespace: tanzu-package-repo-global
+    spec:
+      refName: metallb.pksbeachhouse.com
+      version: 0.12.1
+      releaseNotes: relevant release notes...
+      licenses:
+      - UNKNOWN
+      template:
+        spec:
+          fetch:
+          - imgpkgBundle:
+              image: harbor.pksbeachhouse.com/imgpkg/charts/metallb@sha256:2f7573c489e8bfa426732b6b2242724a1b72f99584a15af743e3df8bffd025bc
+          template:
+          - ytt:
+              inline:
+                paths:
+                  values.yaml: |
+                    #@data/values
+                    ---
+                    metallb:
+                      addresses: "192.168.2.240-192.168.2.250"
+              paths:
+              - config/
+          - kbld:
+              paths:
+              - '-'
+              - .imgpkg/images.yml
+          deploy:
+          - kapp:
+              rawOptions:
+              - --wait-timeout=5m
+              - --diff-changes=true
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: metallb-install-cluster-admin-role
+    rules:
+    - apiGroups:
+      - '*'
+      resources:
+      - '*'
+      verbs:
+      - '*'
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: metallb-install-cluster-admin-role-binding
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: metallb-install-cluster-admin-role
+    subjects:
+    - kind: ServiceAccount
+      name: metallb-install-sa
+      namespace: tanzu-package-repo-global
+    ---
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: metallb-install-sa
+      namespace: tanzu-package-repo-global
+    ---
+    apiVersion: packaging.carvel.dev/v1alpha1
+    kind: PackageInstall
+    metadata:
+      name: metallb
+      namespace: tanzu-package-repo-global
+    spec:
+      serviceAccountName: metallb-install-sa
+      packageRef:
+        refName: metallb.pksbeachhouse.com
+        versionSelection:
+          constraints: "0.12.1"
+          prereleases: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cert-manager-package-crs
+data:
+  data: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: cert-manager-tce-cluster-admin-role
+    rules:
+    - apiGroups:
+      - '*'
+      resources:
+      - '*'
+      verbs:
+      - '*'
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: cert-manager-tce-cluster-admin-role-binding
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: cert-manager-tce-cluster-admin-role
+    subjects:
+    - kind: ServiceAccount
+      name: cert-manager-tce-sa
+      namespace: tanzu-package-repo-global
+    ---
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: cert-manager-tce-sa
+      namespace: tanzu-package-repo-global
+    ---
+    apiVersion: packaging.carvel.dev/v1alpha1
+    kind: PackageInstall
+    metadata:
+      name: cert-manager
+      namespace: tanzu-package-repo-global
+    spec:
+      serviceAccountName: cert-manager-tce-sa
+      packageRef:
+        refName: cert-manager.community.tanzu.vmware.com
+        versionSelection:
+          constraints: "1.6.1"
+          prereleases: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: contour-package-crs
+data:
+  data: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: contour-tce-cluster-admin-role
+    rules:
+    - apiGroups:
+      - '*'
+      resources:
+      - '*'
+      verbs:
+      - '*'
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: contour-tce-cluster-admin-role-binding
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: contour-tce-cluster-admin-role
+    subjects:
+    - kind: ServiceAccount
+      name: contour-tce-sa
+      namespace: tanzu-package-repo-global
+    ---
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: contour-tce-sa
+      namespace: tanzu-package-repo-global
+    ---
+    apiVersion: packaging.carvel.dev/v1alpha1
+    kind: PackageInstall
+    metadata:
+      name: contour
+      namespace: tanzu-package-repo-global
+    spec:
+      serviceAccountName: contour-tce-sa
+      packageRef:
+        refName: contour.community.tanzu.vmware.com
+        versionSelection:
+          constraints: 1.20.1
+          prereleases: {}
+      values:
+      - secretRef:
+          name: contour-values
+    ---
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: contour-values
+      namespace: tanzu-package-repo-global
+    stringData:
+      values.yaml: |
+        namespace: contour
+        certificates:
+          useCertManager: true
+        envoy:
+          service:
+            type: LoadBalancer
+        infrastructure_provider: vsphere
